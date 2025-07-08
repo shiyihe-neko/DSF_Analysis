@@ -1,0 +1,27 @@
+{
+  "patients": [
+    {
+      "name": "John",
+      "tests": [
+        {
+          "id": 1,
+          "result": "Normal"
+        },
+        {
+          "id": 2,
+          "result": "Elevated Cholesterol"
+        }
+      ]
+    },
+    {
+      "name": "Michael",
+      "tests": [
+        {
+          "id": 1,
+          "result": "Normal"
+        }
+      ],
+      "treatment": "Regular Monitoring"
+    }
+  ]
+}

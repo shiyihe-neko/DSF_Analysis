@@ -1,0 +1,19 @@
+{
+    "version": "4.4.7",
+    "repository": {
+        "author": {
+            "middle name": "",
+            "IsMember": true
+        },
+        "type": "git"
+    },
+    "engines": {
+        "pnpm": ">=8"
+    },
+    "keywords": [
+        "canvas",
+        "responsive",
+        "charts"
+    ]
+}
+
