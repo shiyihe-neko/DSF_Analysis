@@ -75,7 +75,7 @@ def validate_strict_toml(code):
     except: return False
 
 def validate_loose_json_family(code): 
-    try: demjson3.decode(code); return True
+    try: validate_strict_hjson(code); return True
     except: return False
 
 def validate_loose_toml(code): 

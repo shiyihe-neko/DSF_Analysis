@@ -681,3 +681,217 @@ def parse_all_answers(
     # Combine and preserve original order
     combined = pd.concat([df_json, df_ytt, df_xml, df_other], ignore_index=True)
     return combined[[id_col, fmt_col, task_col, 'parsed_answer']]
+
+# class CleanYTParser:
+#     def __init__(self):
+#         self.parser_yaml = parser_yaml
+#         self.parser_toml = parser_toml
+
+#     def node_to_dict(self, node, src: bytes) -> Any:
+#         """Tree-sitter AST → Python 原生结构"""
+#         if node.type in ("mapping","table","flow_mapping","object","document","inline_table"):
+#             d = {}
+#             for pair in node.named_children:
+#                 # map_pair/pair_item/table_pair
+#                 if pair.type.startswith(("pair","map_pair","pair_item","table_pair")):
+#                     k = self.node_to_dict(pair.child_by_field_name("key"), src)
+#                     v = self.node_to_dict(pair.child_by_field_name("value"), src)
+#                     d[k] = v
+#             return d
+#         if node.type in ("sequence","array","flow_sequence","array_elements"):
+#             return [self.node_to_dict(c, src) for c in node.named_children]
+#         txt = src[node.start_byte:node.end_byte].decode("utf8")
+#         if node.type in ("string","quoted_scalar","text"):
+#             return txt.strip('"\'')
+#         if node.type in ("integer","float","number"):
+#             return int(txt) if txt.isdigit() else float(txt)
+#         if node.type == "boolean":
+#             return txt.lower() == "true"
+#         if node.type == "null":
+#             return None
+#         return txt
+
+#     def regex_parse(self, text: str) -> Dict[str,Any]:
+#         """最简正则兜底：key:value、key=[…]、key={…}"""
+#         result = {}
+#         # key: [a, b, c]
+#         for m in re.finditer(r"(\w+)\s*=\s*\[([^\]]*)\]", text):
+#             arr = [x.strip().strip('"\'') for x in m.group(2).split(",") if x.strip()]
+#             result[m.group(1)] = arr
+#         # key = { a = 1, b = 2 }
+#         for m in re.finditer(r"(\w+)\s*=\s*\{([^}]*)\}", text):
+#             inner = m.group(2)
+#             sub = dict(re.findall(r'(\w+)\s*=\s*("[^"]*"|\d+)', inner))
+#             # 转类型
+#             for k,v in sub.items():
+#                 if v.isdigit(): sub[k]=int(v)
+#                 elif v.startswith('"'): sub[k]=v.strip('"')
+#             result[m.group(1)] = sub
+#         # 最后的简单 key:value
+#         for m in re.finditer(r"(\w+)\s*[:=]\s*([^,\n]+)", text):
+#             k,v = m.group(1), m.group(2).strip().strip('"\'')
+#             if k not in result:
+#                 result[k] = v
+#         return result
+
+#     def parse_code(self, code, fmt, use_tree_sitter=True):
+#         fmt = fmt.lower().strip()
+#         if not isinstance(code, str):
+#             return {}, "empty"
+
+#         # YAML
+#         if fmt in ("yaml","yml"):
+#             # 1) tree-sitter
+#             if use_tree_sitter:
+#                 try:
+#                     tree = self.parser_yaml.parse(code.encode("utf8"))
+#                     return self.node_to_dict(tree.root_node, code.encode("utf8")), "ytt-tree"
+#                 except:
+#                     pass
+#             # 2) 官方库
+#             try:
+#                 import yaml
+#                 return yaml.safe_load(code) or {}, "ytt-lib"
+#             except:
+#                 pass
+#             # 3) regex 兜底
+#             return self.regex_parse(code), "ytt-regex"
+
+#         # TOML
+#         if fmt == "toml":
+#             if use_tree_sitter:
+#                 try:
+#                     tree = self.parser_toml.parse(code.encode("utf8"))
+#                     return self.node_to_dict(tree.root_node, code.encode("utf8")), "toml-tree"
+#                 except:
+#                     pass
+#             try:
+#                 import toml
+#                 return toml.loads(code) or {}, "toml-lib"
+#             except:
+#                 pass
+#             return self.regex_parse(code), "toml-regex"
+
+#         return {}, "skip"
+
+#     def parse_answer(self, df, code_col="answer", fmt_col="format"):
+#         df = df.copy()
+#         parsed, methods = [], []
+#         for _, row in df.iterrows():
+#             p, m = self.parse_code(row[code_col], row[fmt_col], use_tree_sitter=True)
+#             parsed.append(p)
+#             methods.append(m)
+#         df["parsed_answer"], df["parsed_method"] = parsed, methods
+#         return df
+
+# class CleanXMLParser:
+#     def parse_code(self, code, fmt):
+#         if fmt.lower().strip() != "xml" or not isinstance(code,str):
+#             return {}, "empty"
+#         wrapped = re.sub(r"<!--.*?-->", "", code, flags=re.DOTALL)
+#         wrapped = f"<root>{wrapped}</root>"
+#         # 1) xmltodict 强制列表
+#         try:
+#             d = xmltodict.parse(wrapped, force_list=("movie","cast","genres","awards"))
+#             return d["root"]["movies"], "xml-lib"
+#         except:
+#             pass
+#         # 2) lxml recover
+#         try:
+#             parser = etree.XMLParser(recover=True)
+#             rt = etree.fromstring(wrapped.encode("utf-8"), parser=parser)
+#             def to_dict(n):
+#                 r={}
+#                 for k,v in n.attrib.items(): r[f"@{k}"]=v
+#                 for c in n:
+#                     sub = to_dict(c)
+#                     if c.tag in r:
+#                         if isinstance(r[c.tag],list): r[c.tag].append(sub)
+#                         else: r[c.tag]=[r[c.tag], sub]
+#                     else:
+#                         r[c.tag]=sub
+#                 return r if n else (n.text or "").strip()
+#             parsed = to_dict(rt).get("root",{}).get("movies",{})
+#             return parsed, "xml-recover"
+#         except:
+#             pass
+#         # 3) 最后返回空结构
+#         return {}, "xml-fail"
+
+#     def parse_answer(self, df, code_col="answer", fmt_col="format"):
+#         df = df.copy()
+#         parsed, methods = [], []
+#         for _, row in df.iterrows():
+#             p,m = self.parse_code(row[code_col], row[fmt_col])
+#             parsed.append(p)
+#             methods.append(m)
+#         df["parsed_answer"], df["parsed_method"] = parsed, methods
+#         return df
+
+
+# # --------- parse_all_answers 调度 ---------
+
+# def parse_all_answers(
+#     df: pd.DataFrame,
+#     json_parser,       # CleanJSONParser 实例
+#     xml_parser,        # CleanXMLParser 实例
+#     ytt_parser,        # CleanYTParser 实例
+#     json_formats: List[str] = None,
+#     yaml_formats: List[str] = None,
+#     toml_formats: List[str] = None,
+#     xml_format: str = "xml",
+#     id_col: str = "participantId",
+#     fmt_col: str = "format",
+#     code_col: str = "answer",
+#     task_col: str = "task"
+# ) -> pd.DataFrame:
+#     """
+#     Dispatch parsing based on format:
+#       - JSON 系列 -> json_parser.parse_answer(df_json)
+#       - YAML/TOML -> ytt_parser.parse_answer(df_yt)  （内部自己处理 use_tree_sitter）
+#       - XML      -> xml_parser.parse_answer(df_xml)
+#       - 其它     -> [{}] 填充
+#     最后合并，保证不重复。
+#     """
+#     if json_formats is None:
+#         json_formats = ['json', 'jsonc', 'json5', 'hjson']
+#     if yaml_formats is None:
+#         yaml_formats = ['yaml', 'yml']
+#     if toml_formats is None:
+#         toml_formats = ['toml']
+
+#     parts = []
+#     # 1. JSON
+#     df_json = df[df[fmt_col].isin(json_formats)].copy()
+#     if not df_json.empty:
+#         df_j = json_parser.parse_answer(df_json)
+#         parts.append(df_j)
+
+#     # 2. YAML / TOML
+#     df_yt = df[df[fmt_col].isin(yaml_formats + toml_formats)].copy()
+#     if not df_yt.empty:
+#         # CleanYTParser.parse_answer 会内部用 tree-sitter + library + regex
+#         df_y = ytt_parser.parse_answer(df_yt)
+#         parts.append(df_y)
+
+#     # 3. XML
+#     df_xml = df[df[fmt_col] == xml_format].copy()
+#     if not df_xml.empty:
+#         df_x = xml_parser.parse_answer(df_xml)
+#         parts.append(df_x)
+
+#     # 4. 其它格式，全填空 dict
+#     df_other = df[~df[fmt_col].isin(
+#         json_formats + yaml_formats + toml_formats + [xml_format]
+#     )].copy()
+#     if not df_other.empty:
+#         df_o = df_other.copy()
+#         df_o['parsed_answer'] = [{} for _ in range(len(df_o))]
+#         parts.append(df_o[[id_col, fmt_col, task_col, 'parsed_answer']])
+
+#     # 合并所有分支（不会重复，因为它们的分区是互不交叠的）
+#     result = pd.concat(parts, ignore_index=True)
+
+#     # 最终按原 df 顺序输出
+#     # 如果原始 df 有其它列需要保留可以再 join
+#     return result[[id_col, fmt_col, task_col, 'parsed_answer']]
